@@ -7,7 +7,7 @@ interface ChatMessage {
   content: string;
 }
 
-interface NPCInfo {
+export interface NPCInfo {
   name: string;
   personality: string;
   objectives: string[];
@@ -29,7 +29,7 @@ interface RPGContext {
   combatInfo?: CombatInfo;
 }
 
-type RequestType = "narrative" | "combat" | "npc" | "world";
+type RequestType = "classify" | "narrative" | "combat" | "npc" | "world";
 
 export const useRPGMaster = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -39,7 +39,7 @@ export const useRPGMaster = () => {
     type: RequestType,
     messages: ChatMessage[],
     context?: RPGContext
-  ): Promise<string | object | null> => {
+  ): Promise<any> => {
     setIsLoading(true);
     setError(null);
 
@@ -127,6 +127,68 @@ export const useRPGMaster = () => {
     return sendToMaster("world", messages, context);
   }, [sendToMaster]);
 
+  const classifyIntent = useCallback(async (
+    playerAction: string,
+    history: ChatMessage[]
+  ): Promise<{ intent: RequestType, reason: string } | null> => {
+    const messages: ChatMessage[] = [
+      ...history,
+      { role: "user", content: playerAction }
+    ];
+    const result = await sendToMaster("classify", messages);
+    // The backend is expected to return a JSON object { intent: "...", reason: "..." }
+    if (typeof result === 'object' && result !== null && 'intent' in result) {
+      return result as { intent: RequestType, reason: string };
+    }
+    console.error("Classify intent failed to return a valid object:", result);
+    return null;
+  }, [sendToMaster]);
+
+  const processPlayerAction = useCallback(async (
+    playerAction: string,
+    history: ChatMessage[],
+    context: RPGContext
+  ): Promise<{ response: string | object | null, intent: RequestType }> => {
+    // 1. Classify Intent
+    const classification = await classifyIntent(playerAction, history);
+
+    if (!classification) {
+      return { response: "O Mestre IA não conseguiu entender sua intenção. Tente reformular sua ação.", intent: "narrative" };
+    }
+
+    const { intent } = classification;
+    console.log(`Ação classificada como: ${intent}. Razão: ${classification.reason}`);
+
+    // 2. Route to the correct agent
+    let response: string | object | null = null;
+
+    switch (intent) {
+      case "combat":
+        // For combat, we assume the player is making an attack or using an ability.
+        // In a real scenario, this would trigger the combat system (useCombat hook)
+        // For now, we pass the action to the narrative agent for a descriptive response.
+        response = await narrate(playerAction, history, context);
+        break;
+      case "npc":
+        // Assuming context.npcInfo is available if the player is talking to an NPC.
+        if (context.npcInfo) {
+          response = await talkToNPC(playerAction, context.npcInfo, history, context);
+        } else {
+          response = await narrate(playerAction, history, context);
+        }
+        break;
+      case "world":
+        response = await getWorldReaction(playerAction, context);
+        break;
+      case "narrative":
+      default:
+        response = await narrate(playerAction, history, context);
+        break;
+    }
+
+    return { response, intent };
+  }, [classifyIntent, narrate, talkToNPC, getWorldReaction]);
+
   return {
     isLoading,
     error,
@@ -134,6 +196,7 @@ export const useRPGMaster = () => {
     getCombatDecision,
     talkToNPC,
     getWorldReaction,
-    sendToMaster
+    sendToMaster,
+    processPlayerAction // New main entry point
   };
 };
