@@ -1,4 +1,4 @@
-import { getAttributeModifier } from "./dice";
+import { getAttributeModifier, getProficiencyBonus } from "./dice";
 
 export interface Combatant {
   id: string;
@@ -274,25 +274,29 @@ export const createPlayerCombatant = (character: {
   hp: { current: number; max: number };
   attributes: Record<string, number>;
 }): Combatant => {
+  const pb = getProficiencyBonus(character.level);
   const forMod = getAttributeModifier(character.attributes.FOR);
   const desMod = getAttributeModifier(character.attributes.DES);
+  const intMod = getAttributeModifier(character.attributes.INT);
   
-  // Determine weapon based on class
+  // Determine weapon based on class and use PB
   const attacks: Attack[] = [];
   
   if (character.class === "Guerreiro" || character.class === "Paladino") {
+    // Exemplo: Proficiência em armas marciais
     attacks.push({
       name: "Espada Longa",
-      attackBonus: forMod + 2, // Proficiency
+      attackBonus: forMod + pb,
       damageDice: "1d8",
       damageBonus: forMod,
       damageType: "slashing",
       range: "melee",
     });
   } else if (character.class === "Ladino") {
+    // Exemplo: Proficiência em armas leves (usa DES)
     attacks.push({
       name: "Adaga",
-      attackBonus: desMod + 2,
+      attackBonus: desMod + pb,
       damageDice: "1d4",
       damageBonus: desMod,
       damageType: "piercing",
@@ -300,18 +304,19 @@ export const createPlayerCombatant = (character: {
     });
     attacks.push({
       name: "Arco Curto",
-      attackBonus: desMod + 2,
+      attackBonus: desMod + pb,
       damageDice: "1d6",
       damageBonus: desMod,
       damageType: "piercing",
       range: "ranged",
     });
   } else if (character.class === "Mago") {
+    // Exemplo: Ataque mágico (usa INT + PB)
     attacks.push({
       name: "Raio de Fogo",
-      attackBonus: getAttributeModifier(character.attributes.INT) + 2,
+      attackBonus: intMod + pb,
       damageDice: "1d10",
-      damageBonus: 0,
+      damageBonus: 0, // Dano de magia geralmente não adiciona modificador de atributo
       damageType: "fire",
       range: "ranged",
     });
@@ -321,7 +326,7 @@ export const createPlayerCombatant = (character: {
   if (attacks.length === 0) {
     attacks.push({
       name: "Ataque Desarmado",
-      attackBonus: forMod + 2,
+      attackBonus: forMod + pb,
       damageDice: "1d4",
       damageBonus: forMod,
       damageType: "bludgeoning",
@@ -329,13 +334,17 @@ export const createPlayerCombatant = (character: {
     });
   }
   
+  // AC: 10 + DEX Mod + Armor Bonus (simplificado para 10 + DEX Mod)
+  // O armor bonus virá do inventário, mas por enquanto, simplificamos
+  const ac = 10 + desMod; 
+  
   return {
     id: "player",
     name: character.name,
     type: "player",
     hp: character.hp.current,
     maxHp: character.hp.max,
-    ac: 10 + desMod + 2, // Base AC + DEX + armor bonus
+    ac: ac,
     initiative: 0,
     attributes: character.attributes as Combatant["attributes"],
     attacks,
@@ -343,4 +352,5 @@ export const createPlayerCombatant = (character: {
     conditions: [],
     isActive: true,
   };
+};
 };

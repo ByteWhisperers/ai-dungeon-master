@@ -1,12 +1,41 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+// Simple in-memory cache for the function's lifetime
+const CACHE = new Map<string, { content: any, expiry: number }>();
+const CACHE_TTL_SECONDS = 3600; // 1 hour
+
+const getCacheKey = (type: string, messages: any[], context: any): string => {
+  // Only cache non-combat, non-NPC responses for now, as they are more context-dependent
+  if (type === "combat" || type === "npc") {
+    return ""; // Do not cache
+  }
+  
+  // Use a simple hash of the request body for the key
+  const relevantData = { type, messages, context };
+  return JSON.stringify(relevantData);
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 // System prompts for different AI agents
+const CLASSIFY_PROMPT = `Você é um Classificador de Intenções de RPG. Sua única função é analisar a última mensagem do jogador e determinar a intenção principal.
+
+INTENÇÕES POSSÍVEIS:
+- narrative: O jogador está descrevendo uma ação de exploração, movimento, ou uma ação que requer narração do Mestre (ex: "Eu entro na taverna", "Eu tento escalar a parede").
+- combat: O jogador está realizando uma ação tática ou de ataque durante um combate (ex: "Eu ataco o goblin com minha espada", "Eu lanço Mísseis Mágicos").
+- npc: O jogador está falando diretamente com um NPC (ex: "Bom dia, mercador. Quanto custa esta poção?").
+- world: O jogador está tentando interagir com o ambiente ou obter informações sobre o mundo (ex: "Eu procuro por armadilhas", "Eu tento arrombar a porta").
+
+FORMATO DE RESPOSTA (JSON):
+{
+  "intent": "narrative|combat|npc|world",
+  "reason": "Breve justificativa para a escolha"
+}`;
 const SYSTEM_PROMPTS = {
+  classify: CLASSIFY_PROMPT,
   narrative: `Você é um Mestre de RPG experiente e criativo. Sua função é narrar a história de forma imersiva e envolvente.
 
 REGRAS DE NARRAÇÃO:
@@ -77,7 +106,7 @@ interface ChatMessage {
 }
 
 interface RequestBody {
-  type: "narrative" | "combat" | "npc" | "world";
+  type: "classify" | "narrative" | "combat" | "npc" | "world";
   messages: ChatMessage[];
   context?: {
     location?: string;
@@ -116,8 +145,39 @@ serve(async (req) => {
     
     console.log(`Processing ${type} request with ${messages.length} messages`);
 
+    // --- CACHE CHECK ---
+    const cacheKey = getCacheKey(type, messages, context);
+    if (cacheKey) {
+      const cached = CACHE.get(cacheKey);
+      if (cached && cached.expiry > Date.now()) {
+        console.log(`Cache hit for ${type} request.`);
+        return new Response(JSON.stringify({ 
+          response: cached.content,
+          type,
+          source: "cache"
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      } else if (cached) {
+        // Cache expired
+        CACHE.delete(cacheKey);
+      }
+    }
+    // --- END CACHE CHECK ---
+
     // Build system prompt with context
     let systemPrompt = SYSTEM_PROMPTS[type] || SYSTEM_PROMPTS.narrative;
+    
+    // For classification, we want a low temperature and a specific model if possible
+    let model = "google/gemini-2.5-flash";
+    let temperature = 0.8;
+    let isJsonOutput = (type === "combat" || type === "world" || type === "classify");
+
+    if (type === "classify") {
+      // Use a more deterministic model/settings for classification
+      model = "google/gemini-2.5-flash"; // Keeping the same model for simplicity, but setting low temp
+      temperature = 0.1;
+    }
     
     // Add context to system prompt if provided
     if (context) {
@@ -157,10 +217,10 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: model,
         messages: apiMessages,
         max_tokens: 500,
-        temperature: 0.8,
+        temperature: temperature,
       }),
     });
 
@@ -196,9 +256,19 @@ serve(async (req) => {
     
     console.log(`Generated ${type} response: ${generatedContent.substring(0, 100)}...`);
 
-    // Parse JSON responses for combat and world types
+    // --- CACHE SET ---
+    if (cacheKey) {
+      CACHE.set(cacheKey, {
+        content: generatedContent,
+        expiry: Date.now() + CACHE_TTL_SECONDS * 1000
+      });
+      console.log(`Cache set for ${type} request.`);
+    }
+    // --- END CACHE SET ---
+
+    // Parse JSON responses for combat, world, and classify types
     let parsedResponse = generatedContent;
-    if (type === "combat" || type === "world") {
+    if (isJsonOutput) {
       try {
         // Extract JSON from response if wrapped in markdown
         const jsonMatch = generatedContent.match(/```json\s*([\s\S]*?)\s*```/) || 
@@ -214,7 +284,8 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({ 
       response: parsedResponse,
-      type 
+      type,
+      source: "ai"
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
