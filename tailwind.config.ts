@@ -13,6 +13,10 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        display: ["Cinzel", "serif"],
+        body: ["Source Sans Pro", "sans-serif"],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -47,6 +51,31 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        magic: {
+          DEFAULT: "hsl(var(--magic))",
+          glow: "hsl(var(--magic-glow))",
+        },
+        combat: {
+          DEFAULT: "hsl(var(--combat))",
+          glow: "hsl(var(--combat-glow))",
+        },
+        explore: {
+          DEFAULT: "hsl(var(--explore))",
+          glow: "hsl(var(--explore-glow))",
+        },
+        narrative: {
+          DEFAULT: "hsl(var(--narrative))",
+          glow: "hsl(var(--narrative-glow))",
+        },
+        gold: {
+          DEFAULT: "hsl(var(--gold))",
+          light: "hsl(var(--gold-light))",
+          dark: "hsl(var(--gold-dark))",
+        },
+        parchment: {
+          DEFAULT: "hsl(var(--parchment))",
+          dark: "hsl(var(--parchment-dark))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -65,25 +94,30 @@ export default {
       },
       keyframes: {
         "accordion-down": {
-          from: {
-            height: "0",
-          },
-          to: {
-            height: "var(--radix-accordion-content-height)",
-          },
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
         },
         "accordion-up": {
-          from: {
-            height: "var(--radix-accordion-content-height)",
-          },
-          to: {
-            height: "0",
-          },
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
+        },
+        shimmer: {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
+        },
+        glow: {
+          "0%, 100%": { boxShadow: "0 0 20px hsl(var(--magic) / 0.4)" },
+          "50%": { boxShadow: "0 0 40px hsl(var(--magic) / 0.6)" },
         },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        shimmer: "shimmer 3s ease-in-out infinite",
+        glow: "glow 3s ease-in-out infinite",
+      },
+      backgroundImage: {
+        "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
       },
     },
   },

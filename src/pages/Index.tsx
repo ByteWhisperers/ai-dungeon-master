@@ -1,13 +1,28 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import Navbar from "@/components/game/Navbar";
+import HeroSection from "@/components/game/HeroSection";
+import FeaturesSection from "@/components/game/FeaturesSection";
+import AttributesSection from "@/components/game/AttributesSection";
+import ArchitectureSection from "@/components/game/ArchitectureSection";
+import CTASection from "@/components/game/CTASection";
+import Footer from "@/components/game/Footer";
 
 const Index = () => {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
-    </div>
+    <main className="min-h-screen bg-background">
+      <Navbar />
+      <HeroSection />
+      <section id="features">
+        <FeaturesSection />
+      </section>
+      <section id="system">
+        <AttributesSection />
+      </section>
+      <section id="architecture">
+        <ArchitectureSection />
+      </section>
+      <CTASection />
+      <Footer />
+    </main>
   );
 };
 
