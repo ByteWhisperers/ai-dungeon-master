@@ -1,1 +1,4 @@
 project_id = "htxjplmbsqiuhqocmyok"
+
+[functions.rpg-master]
+verify_jwt = false
