@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sparkles, Send, Swords, Map, Users, Menu, Heart, Shield, Zap, Settings, LogOut } from "lucide-react";
 import { useRPGMaster } from "@/hooks/useRPGMaster";
+import CombatInterface from "@/components/game/CombatInterface";
+import { toast } from "@/hooks/use-toast";
 
 interface Message {
   id: string;
@@ -28,6 +30,14 @@ const INITIAL_CONTEXT = {
   recentEvents: ["Jogador acabou de entrar na taverna"]
 };
 
+// Demo combat scenarios
+const COMBAT_SCENARIOS: Record<string, { enemies: string[]; trigger: string }> = {
+  wolves: { enemies: ["wolf", "wolf"], trigger: "floresta" },
+  bandits: { enemies: ["bandit", "bandit"], trigger: "bandido" },
+  goblins: { enemies: ["goblin", "goblin", "goblin"], trigger: "goblin" },
+  skeleton: { enemies: ["skeleton"], trigger: "esqueleto" },
+};
+
 const Game = () => {
   const { narrate, isLoading, error } = useRPGMaster();
   const [messages, setMessages] = useState<Message[]>([
@@ -47,9 +57,11 @@ const Game = () => {
   const [input, setInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [context, setContext] = useState(INITIAL_CONTEXT);
+  const [inCombat, setInCombat] = useState(false);
+  const [combatEnemies, setCombatEnemies] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const [character] = useState<CharacterStats>({
+  const [character, setCharacter] = useState<CharacterStats>({
     name: "Aldric",
     class: "Guerreiro",
     level: 1,
@@ -63,6 +75,24 @@ const Game = () => {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Check for combat triggers
+  const checkCombatTrigger = (text: string): string[] | null => {
+    const lowerText = text.toLowerCase();
+    for (const [key, scenario] of Object.entries(COMBAT_SCENARIOS)) {
+      if (lowerText.includes(scenario.trigger)) {
+        return scenario.enemies;
+      }
+    }
+    // Random combat chance (10%) when exploring
+    if (lowerText.includes("explor") || lowerText.includes("caminho") || lowerText.includes("floresta")) {
+      if (Math.random() < 0.15) {
+        const scenarios = Object.values(COMBAT_SCENARIOS);
+        return scenarios[Math.floor(Math.random() * scenarios.length)].enemies;
+      }
+    }
+    return null;
+  };
 
   // Convert messages to chat history format for AI
   const getChatHistory = () => {
@@ -86,6 +116,25 @@ const Game = () => {
     
     setMessages(prev => [...prev, playerMessage]);
     setInput("");
+
+    // Check for combat trigger
+    const enemies = checkCombatTrigger(content);
+    if (enemies) {
+      // Start combat
+      const combatMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        type: "combat",
+        content: `⚔️ **COMBATE INICIADO!** Você encontra inimigos hostis!`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, combatMessage]);
+      
+      setTimeout(() => {
+        setCombatEnemies(enemies);
+        setInCombat(true);
+      }, 1000);
+      return;
+    }
 
     // Get AI response
     const history = getChatHistory();
@@ -121,16 +170,85 @@ const Game = () => {
     }
   };
 
+  // Handle combat end
+  const handleCombatEnd = (victory: boolean, xpGained: number) => {
+    setInCombat(false);
+    setCombatEnemies([]);
+    
+    if (victory) {
+      // Add XP
+      const newXp = character.xp.current + xpGained;
+      let newLevel = character.level;
+      let newMaxHp = character.hp.max;
+      let nextLevelXp = character.xp.next;
+      
+      // Check for level up
+      if (newXp >= character.xp.next) {
+        newLevel = character.level + 1;
+        newMaxHp = character.hp.max + 5;
+        nextLevelXp = Math.floor(character.xp.next * 1.5);
+        
+        toast({
+          title: "LEVEL UP!",
+          description: `${character.name} alcançou o nível ${newLevel}!`,
+        });
+      }
+      
+      setCharacter(prev => ({
+        ...prev,
+        xp: { current: newXp, next: nextLevelXp },
+        level: newLevel,
+        hp: { current: prev.hp.current, max: newMaxHp },
+      }));
+      
+      // Add victory message
+      const victoryMessage: Message = {
+        id: Date.now().toString(),
+        type: "system",
+        content: `🏆 Vitória! Você ganhou ${xpGained} XP. Continue sua aventura!`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, victoryMessage]);
+    } else {
+      // Restore HP on defeat (for demo)
+      setCharacter(prev => ({
+        ...prev,
+        hp: { ...prev.hp, current: Math.floor(prev.hp.max / 2) },
+      }));
+      
+      const defeatMessage: Message = {
+        id: Date.now().toString(),
+        type: "system",
+        content: "💀 Você foi derrotado, mas acorda horas depois com ferimentos leves...",
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, defeatMessage]);
+    }
+  };
+
   const quickActions = [
     { label: "Falar com Taverneiro", action: "Aproximo-me do taverneiro Boris e pergunto sobre as novidades da região" },
     { label: "Examinar Arredores", action: "Observo cuidadosamente a taverna, procurando por detalhes interessantes ou suspeitos" },
     { label: "Abordar Estranho", action: "Caminho até o estranho encapuzado no canto e pergunto quem ele é e o que faz aqui" },
+    { label: "⚔️ Testar Combate", action: "Saio da taverna e exploro a floresta ao norte, onde dizem que lobos atacam viajantes" },
   ];
 
   const getModifier = (value: number) => {
     const mod = Math.floor((value - 10) / 2);
     return mod >= 0 ? `+${mod}` : mod.toString();
   };
+
+  // Combat overlay
+  if (inCombat) {
+    return (
+      <CombatInterface
+        character={character}
+        enemies={combatEnemies}
+        onCombatEnd={handleCombatEnd}
+        onPlayerHpChange={(newHp) => setCharacter(prev => ({ ...prev, hp: { ...prev.hp, current: newHp } }))}
+      />
+    );
+  }
 
   return (
     <div className="h-screen bg-background flex overflow-hidden">
@@ -167,9 +285,9 @@ const Game = () => {
                   <span className="text-foreground">{character.hp.current}/{character.hp.max}</span>
                 </div>
                 <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                  <div 
+                  <motion.div 
                     className="h-full bg-gradient-to-r from-combat to-orange-500 transition-all"
-                    style={{ width: `${(character.hp.current / character.hp.max) * 100}%` }}
+                    animate={{ width: `${(character.hp.current / character.hp.max) * 100}%` }}
                   />
                 </div>
               </div>
@@ -183,9 +301,9 @@ const Game = () => {
                   <span className="text-foreground">{character.xp.current}/{character.xp.next}</span>
                 </div>
                 <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                  <div 
+                  <motion.div 
                     className="h-full bg-gradient-to-r from-primary to-gold transition-all"
-                    style={{ width: `${(character.xp.current / character.xp.next) * 100}%` }}
+                    animate={{ width: `${(character.xp.current / character.xp.next) * 100}%` }}
                   />
                 </div>
               </div>
@@ -303,6 +421,12 @@ const Game = () => {
                     <span>{character.name}</span>
                   </div>
                 )}
+                {message.type === "combat" && (
+                  <div className="flex items-center gap-2 mb-2 text-xs text-combat">
+                    <Swords className="w-3 h-3" />
+                    <span>Combate</span>
+                  </div>
+                )}
                 <p className="text-foreground whitespace-pre-wrap leading-relaxed">
                   {message.content.split("**").map((part, i) => 
                     i % 2 === 0 ? part : <strong key={i} className="text-primary">{part}</strong>
@@ -337,7 +461,7 @@ const Game = () => {
             {quickActions.map((qa, i) => (
               <Button
                 key={i}
-                variant="outline"
+                variant={qa.label.includes("⚔️") ? "combat" : "outline"}
                 size="sm"
                 onClick={() => sendMessage(qa.action)}
                 disabled={isLoading}
