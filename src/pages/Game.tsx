@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sparkles, Send, Swords, Map, Users, Menu, Heart, Shield, Zap, Settings, LogOut } from "lucide-react";
-import { toast } from "@/hooks/use-toast";
+import { useRPGMaster } from "@/hooks/useRPGMaster";
 
 interface Message {
   id: string;
@@ -22,7 +22,14 @@ interface CharacterStats {
   attributes: Record<string, number>;
 }
 
+const INITIAL_CONTEXT = {
+  location: "Taverna do Porco Embriagado",
+  characters: ["Boris (taverneiro)", "Forasteiro misterioso"],
+  recentEvents: ["Jogador acabou de entrar na taverna"]
+};
+
 const Game = () => {
+  const { narrate, isLoading, error } = useRPGMaster();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -33,13 +40,13 @@ const Game = () => {
     {
       id: "2",
       type: "system",
-      content: "🎮 Bem-vindo! Digite suas ações ou use os botões rápidos.",
+      content: "🎮 Bem-vindo! Digite suas ações ou use os botões rápidos. O Mestre IA está pronto!",
       timestamp: new Date(),
     }
   ]);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [context, setContext] = useState(INITIAL_CONTEXT);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [character] = useState<CharacterStats>({
@@ -57,8 +64,18 @@ const Game = () => {
     }
   }, [messages]);
 
+  // Convert messages to chat history format for AI
+  const getChatHistory = () => {
+    return messages
+      .filter(m => m.type === "narrative" || m.type === "player")
+      .map(m => ({
+        role: m.type === "player" ? "user" as const : "assistant" as const,
+        content: m.content
+      }));
+  };
+
   const sendMessage = async (content: string) => {
-    if (!content.trim()) return;
+    if (!content.trim() || isLoading) return;
     
     const playerMessage: Message = {
       id: Date.now().toString(),
@@ -69,32 +86,45 @@ const Game = () => {
     
     setMessages(prev => [...prev, playerMessage]);
     setInput("");
-    setIsLoading(true);
 
-    // Simulate AI response (in production, this would call the backend)
-    setTimeout(() => {
-      const responses = [
-        "O taverneiro, Boris, levanta os olhos e lhe dá um aceno cansado. \"Bem-vindo, forasteiro. O que posso servir? Temos cerveja, hidromel, e se tiver moedas suficientes... informações.\"\n\nEle limpa o balcão enquanto espera sua resposta, mas você nota que seus olhos se desviam brevemente para o estranho encapuzado no canto.",
-        "Você se aproxima do forasteiro misterioso. Quando chega mais perto, ele levanta o rosto, revelando olhos que brilham com um leve tom âmbar. \"Então, você é o tipo que não tem medo do desconhecido,\" ele diz com uma voz rouca. \"Tenho uma proposta que pode interessá-lo. Pessoas têm desaparecido na floresta ao norte. A recompensa é generosa para quem descobrir a verdade.\"",
-        "Você examina os arredores com cuidado. [Teste de Percepção: 14 + 1 = 15 - Sucesso!]\n\nVocê nota algumas coisas interessantes: há marcas de garras na base de uma das mesas. O piso perto da lareira parece ter sido substituído recentemente. E o estranho no canto... ele tem uma adaga peculiar na cintura, com runas que brilham sutilmente.",
-      ];
-      
+    // Get AI response
+    const history = getChatHistory();
+    const response = await narrate(content, history, context);
+    
+    if (response && typeof response === "string") {
       const narrativeMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: "narrative",
-        content: responses[Math.floor(Math.random() * responses.length)],
+        content: response,
         timestamp: new Date(),
       };
       
       setMessages(prev => [...prev, narrativeMessage]);
-      setIsLoading(false);
-    }, 1500);
+      
+      // Update context with recent event
+      setContext(prev => ({
+        ...prev,
+        recentEvents: [
+          content,
+          ...(prev.recentEvents || []).slice(0, 4)
+        ]
+      }));
+    } else if (!response) {
+      // AI failed, add error message
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        type: "system",
+        content: "⚠️ O Mestre IA encontrou um problema. Tente novamente.",
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    }
   };
 
   const quickActions = [
-    { label: "Falar com Taverneiro", action: "Aproximo-me do taverneiro e pergunto sobre as novidades locais" },
-    { label: "Examinar Arredores", action: "Observo cuidadosamente a taverna em busca de detalhes interessantes" },
-    { label: "Abordar Estranho", action: "Caminho até o estranho encapuzado e pergunto quem ele é" },
+    { label: "Falar com Taverneiro", action: "Aproximo-me do taverneiro Boris e pergunto sobre as novidades da região" },
+    { label: "Examinar Arredores", action: "Observo cuidadosamente a taverna, procurando por detalhes interessantes ou suspeitos" },
+    { label: "Abordar Estranho", action: "Caminho até o estranho encapuzado no canto e pergunto quem ele é e o que faz aqui" },
   ];
 
   const getModifier = (value: number) => {
@@ -175,6 +205,15 @@ const Game = () => {
               </div>
             </div>
 
+            {/* Current Location */}
+            <div className="p-4 border-b border-border/50">
+              <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Local Atual</h3>
+              <div className="flex items-center gap-2 text-sm text-foreground">
+                <Map className="w-4 h-4 text-explore" />
+                <span>{context.location}</span>
+              </div>
+            </div>
+
             {/* Quick Navigation */}
             <div className="p-4 flex-1">
               <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Navegação</h3>
@@ -223,12 +262,14 @@ const Game = () => {
             </Button>
             <div className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-primary" />
-              <span className="font-display font-semibold">Taverna do Porco Embriagado</span>
+              <span className="font-display font-semibold">{context.location}</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-explore animate-pulse" />
-            <span className="text-sm text-muted-foreground">IA Mestre Ativo</span>
+            <div className={`w-2 h-2 rounded-full ${isLoading ? "bg-magic animate-pulse" : "bg-explore"}`} />
+            <span className="text-sm text-muted-foreground">
+              {isLoading ? "Mestre narrando..." : "IA Mestre Ativo"}
+            </span>
           </div>
         </header>
 
