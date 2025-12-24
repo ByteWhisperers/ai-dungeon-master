@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      character_inventory: {
+        Row: {
+          character_id: string
+          created_at: string
+          id: string
+          is_equipped: boolean
+          item_id: string
+          quantity: number
+          slot: string | null
+        }
+        Insert: {
+          character_id: string
+          created_at?: string
+          id?: string
+          is_equipped?: boolean
+          item_id: string
+          quantity?: number
+          slot?: string | null
+        }
+        Update: {
+          character_id?: string
+          created_at?: string
+          id?: string
+          is_equipped?: boolean
+          item_id?: string
+          quantity?: number
+          slot?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "character_inventory_character_id_fkey"
+            columns: ["character_id"]
+            isOneToOne: false
+            referencedRelation: "characters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "character_inventory_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       characters: {
         Row: {
           charisma: number
@@ -108,6 +153,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      items: {
+        Row: {
+          armor_bonus: number | null
+          created_at: string
+          damage_bonus: number | null
+          damage_dice: string | null
+          description: string | null
+          hp_restore: number | null
+          id: string
+          item_type: string
+          name: string
+          rarity: string
+          temp_constitution: number | null
+          temp_dexterity: number | null
+          temp_strength: number | null
+          value: number
+          weight: number | null
+        }
+        Insert: {
+          armor_bonus?: number | null
+          created_at?: string
+          damage_bonus?: number | null
+          damage_dice?: string | null
+          description?: string | null
+          hp_restore?: number | null
+          id?: string
+          item_type: string
+          name: string
+          rarity?: string
+          temp_constitution?: number | null
+          temp_dexterity?: number | null
+          temp_strength?: number | null
+          value?: number
+          weight?: number | null
+        }
+        Update: {
+          armor_bonus?: number | null
+          created_at?: string
+          damage_bonus?: number | null
+          damage_dice?: string | null
+          description?: string | null
+          hp_restore?: number | null
+          id?: string
+          item_type?: string
+          name?: string
+          rarity?: string
+          temp_constitution?: number | null
+          temp_dexterity?: number | null
+          temp_strength?: number | null
+          value?: number
+          weight?: number | null
+        }
+        Relationships: []
       }
       messages: {
         Row: {
