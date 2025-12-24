@@ -41,7 +41,7 @@ const COMBAT_SCENARIOS: Record<string, { enemies: string[]; trigger: string }> =
 };
 
 const Game = () => {
-  const { narrate, isLoading, error } = useRPGMaster();
+  const { processPlayerAction, isLoading, error } = useRPGMaster();
   const inventoryHook = useInventory();
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -145,19 +145,19 @@ const Game = () => {
       return;
     }
 
-    // Get AI response
+    // Get AI response via Orquestrador
     const history = getChatHistory();
-    const response = await narrate(content, history, context);
+    const { response, intent } = await processPlayerAction(content, history, context);
     
-    if (response && typeof response === "string") {
-      const narrativeMessage: Message = {
+    if (response) {
+      const responseMessage: Message = {
         id: (Date.now() + 1).toString(),
-        type: "narrative",
-        content: response,
+        type: intent === "narrative" || intent === "npc" ? "narrative" : "system", // Simplificação: respostas de NPC/Narrativa são tratadas como narrativa
+        content: typeof response === "string" ? response : JSON.stringify(response, null, 2), // Trata JSON para debug
         timestamp: new Date(),
       };
       
-      setMessages(prev => [...prev, narrativeMessage]);
+      setMessages(prev => [...prev, responseMessage]);
       
       // Update context with recent event
       setContext(prev => ({
@@ -167,12 +167,22 @@ const Game = () => {
           ...(prev.recentEvents || []).slice(0, 4)
         ]
       }));
-    } else if (!response) {
+      
+      // Check if the intent was combat (for future integration with useCombat)
+      if (intent === "combat") {
+        toast({
+          title: "Ação de Combate Detectada",
+          description: "O Orquestrador identificou uma ação de combate. A lógica de combate será executada em seguida.",
+        });
+        // FUTURO: Aqui chamaremos a função de combate do useCombat
+      }
+      
+    } else {
       // AI failed, add error message
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: "system",
-        content: "⚠️ O Mestre IA encontrou um problema. Tente novamente.",
+        content: `⚠️ O Mestre IA encontrou um problema ao processar a intenção '${intent}'. Tente novamente.`,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
