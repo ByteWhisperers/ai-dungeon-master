@@ -3,9 +3,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Sparkles, Send, Swords, Map, Users, Menu, Heart, Shield, Zap, Settings, LogOut } from "lucide-react";
+import { Sparkles, Send, Swords, Map, Users, Menu, Heart, Shield, Zap, Settings, LogOut, Package, Coins } from "lucide-react";
 import { useRPGMaster } from "@/hooks/useRPGMaster";
+import { useInventory } from "@/hooks/useInventory";
 import CombatInterface from "@/components/game/CombatInterface";
+import InventoryPanel from "@/components/game/InventoryPanel";
 import { toast } from "@/hooks/use-toast";
 
 interface Message {
@@ -40,6 +42,7 @@ const COMBAT_SCENARIOS: Record<string, { enemies: string[]; trigger: string }> =
 
 const Game = () => {
   const { narrate, isLoading, error } = useRPGMaster();
+  const inventoryHook = useInventory();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -56,6 +59,7 @@ const Game = () => {
   ]);
   const [input, setInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [inventoryOpen, setInventoryOpen] = useState(false);
   const [context, setContext] = useState(INITIAL_CONTEXT);
   const [inCombat, setInCombat] = useState(false);
   const [combatEnemies, setCombatEnemies] = useState<string[]>([]);
@@ -69,6 +73,11 @@ const Game = () => {
     xp: { current: 0, next: 300 },
     attributes: { FOR: 16, DES: 14, CON: 14, INT: 10, SAB: 12, CAR: 13 },
   });
+
+  // Initialize inventory on mount
+  useEffect(() => {
+    inventoryHook.initializeInventory();
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -238,6 +247,27 @@ const Game = () => {
     return mod >= 0 ? `+${mod}` : mod.toString();
   };
 
+  // Handle using item outside combat
+  const handleUseItem = (item: typeof inventoryHook.inventory[0]) => {
+    const result = inventoryHook.useConsumable(item);
+    if (result) {
+      if (result.hpRestored > 0) {
+        const newHp = Math.min(character.hp.current + result.hpRestored, character.hp.max);
+        setCharacter(prev => ({ ...prev, hp: { ...prev.hp, current: newHp } }));
+        toast({
+          title: "Poção usada!",
+          description: `Você recuperou ${result.hpRestored} HP.`,
+        });
+      }
+      if (result.buffsApplied.str || result.buffsApplied.dex || result.buffsApplied.con) {
+        toast({
+          title: "Buff aplicado!",
+          description: `Bônus temporário ativo por 3 turnos.`,
+        });
+      }
+    }
+  };
+
   // Combat overlay
   if (inCombat) {
     return (
@@ -246,6 +276,7 @@ const Game = () => {
         enemies={combatEnemies}
         onCombatEnd={handleCombatEnd}
         onPlayerHpChange={(newHp) => setCharacter(prev => ({ ...prev, hp: { ...prev.hp, current: newHp } }))}
+        inventory={inventoryHook}
       />
     );
   }
@@ -344,9 +375,17 @@ const Game = () => {
                   <Users className="w-4 h-4 text-narrative" />
                   <span>NPCs Conhecidos</span>
                 </Button>
-                <Button variant="ghost" className="w-full justify-start gap-2 text-left">
-                  <Swords className="w-4 h-4 text-combat" />
+                <Button 
+                  variant="ghost" 
+                  className="w-full justify-start gap-2 text-left"
+                  onClick={() => setInventoryOpen(true)}
+                >
+                  <Package className="w-4 h-4 text-primary" />
                   <span>Inventário</span>
+                  <span className="ml-auto flex items-center gap-1 text-xs text-gold">
+                    <Coins className="w-3 h-3" />
+                    {inventoryHook.gold}
+                  </span>
                 </Button>
               </div>
             </div>
@@ -492,6 +531,17 @@ const Game = () => {
           </form>
         </div>
       </div>
+
+      {/* Inventory Panel */}
+      <InventoryPanel
+        isOpen={inventoryOpen}
+        onClose={() => setInventoryOpen(false)}
+        inventory={inventoryHook.inventory}
+        gold={inventoryHook.gold}
+        onEquip={inventoryHook.equipItem}
+        onUnequip={inventoryHook.unequipItem}
+        onUseItem={handleUseItem}
+      />
     </div>
   );
 };

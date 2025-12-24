@@ -2,9 +2,38 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Swords, Shield, Heart, Zap, Target, SkullIcon, Trophy, ArrowRight } from "lucide-react";
+import { Swords, Shield, Heart, Zap, Target, SkullIcon, Trophy, ArrowRight, FlaskConical } from "lucide-react";
 import { useCombat } from "@/hooks/useCombat";
-import { Combatant, Attack, ENEMY_TEMPLATES } from "@/lib/combat";
+import { Attack, ENEMY_TEMPLATES } from "@/lib/combat";
+import { InventoryItem, RARITY_COLORS } from "@/lib/inventory";
+
+interface InventoryHook {
+  inventory: InventoryItem[];
+  equippedGear: {
+    weapon: InventoryItem | null;
+    armor: InventoryItem | null;
+    accessory: InventoryItem | null;
+  };
+  gold: number;
+  activeBuffs: {
+    tempStrength: number;
+    tempDexterity: number;
+    tempConstitution: number;
+    turnsRemaining: number;
+  };
+  useConsumable: (item: InventoryItem) => { hpRestored: number; buffsApplied: { str: number; dex: number; con: number } } | null;
+  getCombatBonuses: () => {
+    attackBonus: number;
+    damageBonus: number;
+    damageDice: string;
+    armorBonus: number;
+    tempStrength: number;
+    tempDexterity: number;
+    tempConstitution: number;
+  };
+  decrementBuffTurns: () => void;
+  getPotions: () => InventoryItem[];
+}
 
 interface CombatInterfaceProps {
   character: {
@@ -14,17 +43,22 @@ interface CombatInterfaceProps {
     hp: { current: number; max: number };
     attributes: Record<string, number>;
   };
-  enemies: string[]; // Array of enemy template IDs
+  enemies: string[];
   onCombatEnd: (victory: boolean, xpGained: number) => void;
   onPlayerHpChange: (newHp: number) => void;
+  inventory: InventoryHook;
 }
 
-const CombatInterface = ({ character, enemies, onCombatEnd, onPlayerHpChange }: CombatInterfaceProps) => {
+const CombatInterface = ({ character, enemies, onCombatEnd, onPlayerHpChange, inventory }: CombatInterfaceProps) => {
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
   const [selectedAttack, setSelectedAttack] = useState<Attack | null>(null);
   const [showVictory, setShowVictory] = useState(false);
   const [showDefeat, setShowDefeat] = useState(false);
+  const [showPotions, setShowPotions] = useState(false);
   
+  const potions = inventory.getPotions();
+  const combatBonuses = inventory.getCombatBonuses();
+
   const {
     combatState,
     isLoading,
@@ -36,6 +70,7 @@ const CombatInterface = ({ character, enemies, onCombatEnd, onPlayerHpChange }: 
     executeEnemyTurn,
     nextTurn,
     endCombat,
+    addLogEntry,
   } = useCombat({
     onCombatEnd: (victory) => {
       if (victory) {
@@ -67,14 +102,53 @@ const CombatInterface = ({ character, enemies, onCombatEnd, onPlayerHpChange }: 
     }
   }, [combatState.currentTurnIndex, combatState.isActive, isLoading]);
 
-  // Handle player attack
+  // Handle player attack with inventory bonuses
   const handleAttack = () => {
     if (!selectedTarget || !selectedAttack) return;
     
-    playerAttack(selectedTarget, selectedAttack);
+    const enhancedAttack: Attack = {
+      ...selectedAttack,
+      attackBonus: selectedAttack.attackBonus + Math.floor(combatBonuses.tempStrength / 2),
+      damageBonus: selectedAttack.damageBonus + combatBonuses.damageBonus,
+    };
+    
+    playerAttack(selectedTarget, enhancedAttack);
     setSelectedTarget(null);
     setSelectedAttack(null);
+    inventory.decrementBuffTurns();
     
+    setTimeout(() => nextTurn(), 500);
+  };
+
+  // Handle using potion in combat
+  const handleUsePotion = (potion: InventoryItem) => {
+    const result = inventory.useConsumable(potion);
+    if (result) {
+      if (result.hpRestored > 0) {
+        const newHp = Math.min(character.hp.current + result.hpRestored, character.hp.max);
+        onPlayerHpChange(newHp);
+        
+        addLogEntry({
+          round: combatState.round,
+          actorId: "player",
+          actorName: character.name,
+          action: `usa ${potion.item.name}`,
+          result: `Recupera ${result.hpRestored} HP!`,
+          type: "ability",
+        });
+      }
+      if (result.buffsApplied.str || result.buffsApplied.dex || result.buffsApplied.con) {
+        addLogEntry({
+          round: combatState.round,
+          actorId: "player",
+          actorName: character.name,
+          action: `usa ${potion.item.name}`,
+          result: `Ganha bônus temporário por 3 turnos!`,
+          type: "ability",
+        });
+      }
+    }
+    setShowPotions(false);
     setTimeout(() => nextTurn(), 500);
   };
 
@@ -94,9 +168,8 @@ const CombatInterface = ({ character, enemies, onCombatEnd, onPlayerHpChange }: 
 
   const currentCombatant = getCurrentCombatant();
   const player = combatState.combatants.find(c => c.type === "player");
-  const activeEnemies = combatState.combatants.filter(c => c.type === "enemy" && c.isActive);
 
-  // Victory/Defeat screens
+  // Victory screen
   if (showVictory) {
     const xpGained = calculateXP();
     return (
@@ -139,6 +212,7 @@ const CombatInterface = ({ character, enemies, onCombatEnd, onPlayerHpChange }: 
     );
   }
 
+  // Defeat screen
   if (showDefeat) {
     return (
       <motion.div
@@ -206,7 +280,7 @@ const CombatInterface = ({ character, enemies, onCombatEnd, onPlayerHpChange }: 
                 </div>
                 <div>
                   <div className="font-display font-semibold text-foreground">{player.name}</div>
-                  <div className="text-sm text-muted-foreground">CA: {player.ac}</div>
+                  <div className="text-sm text-muted-foreground">CA: {player.ac + combatBonuses.armorBonus}</div>
                 </div>
               </div>
 
@@ -227,6 +301,16 @@ const CombatInterface = ({ character, enemies, onCombatEnd, onPlayerHpChange }: 
                   />
                 </div>
               </div>
+
+              {/* Active Buffs */}
+              {inventory.activeBuffs.turnsRemaining > 0 && (
+                <div className="mt-3 p-2 bg-magic/20 rounded-lg border border-magic/30">
+                  <div className="text-xs text-magic flex items-center gap-1">
+                    <Zap className="w-3 h-3" />
+                    Buff ativo ({inventory.activeBuffs.turnsRemaining} turnos)
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -245,13 +329,13 @@ const CombatInterface = ({ character, enemies, onCombatEnd, onPlayerHpChange }: 
                   <div className="flex-1">
                     <div className="text-sm font-medium">{attack.name}</div>
                     <div className="text-xs text-muted-foreground">
-                      +{attack.attackBonus} | {attack.damageDice}{attack.damageBonus > 0 ? `+${attack.damageBonus}` : ""}
+                      +{attack.attackBonus} | {attack.damageDice}{attack.damageBonus + combatBonuses.damageBonus > 0 ? `+${attack.damageBonus + combatBonuses.damageBonus}` : ""}
                     </div>
                   </div>
                 </Button>
               ))}
               
-              <div className="pt-2 border-t border-border/50">
+              <div className="pt-2 border-t border-border/50 space-y-2">
                 <Button
                   variant="outline"
                   className="w-full"
@@ -260,6 +344,45 @@ const CombatInterface = ({ character, enemies, onCombatEnd, onPlayerHpChange }: 
                   <Shield className="w-4 h-4 mr-2" />
                   Defender (+2 CA)
                 </Button>
+                
+                {potions.length > 0 && (
+                  <Button
+                    variant="outline"
+                    className="w-full text-green-400"
+                    onClick={() => setShowPotions(!showPotions)}
+                  >
+                    <FlaskConical className="w-4 h-4 mr-2" />
+                    Usar Poção ({potions.length})
+                  </Button>
+                )}
+                
+                {/* Potions dropdown */}
+                <AnimatePresence>
+                  {showPotions && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-1 overflow-hidden"
+                    >
+                      {potions.map((potion) => (
+                        <Button
+                          key={potion.id}
+                          variant="ghost"
+                          size="sm"
+                          className={`w-full justify-start text-xs ${RARITY_COLORS[potion.item.rarity]}`}
+                          onClick={() => handleUsePotion(potion)}
+                        >
+                          🧪 {potion.item.name}
+                          {potion.quantity > 1 && ` (x${potion.quantity})`}
+                          {potion.item.hp_restore > 0 && (
+                            <span className="ml-auto text-green-400">+{potion.item.hp_restore} HP</span>
+                          )}
+                        </Button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
           )}
@@ -375,6 +498,8 @@ const CombatInterface = ({ character, enemies, onCombatEnd, onPlayerHpChange }: 
                       ? "bg-combat/10 border border-combat/20"
                       : entry.type === "system"
                       ? "bg-secondary/50"
+                      : entry.type === "ability"
+                      ? "bg-primary/10 border border-primary/20"
                       : "bg-card"
                   }`}
                 >
@@ -388,6 +513,7 @@ const CombatInterface = ({ character, enemies, onCombatEnd, onPlayerHpChange }: 
                     entry.result.includes("CRÍTICO") ? "text-primary font-bold" :
                     entry.result.includes("Erro") ? "text-muted-foreground" :
                     entry.result.includes("Acerto") ? "text-explore" :
+                    entry.result.includes("Recupera") ? "text-green-400" :
                     "text-muted-foreground"
                   }`}>
                     {entry.result}
