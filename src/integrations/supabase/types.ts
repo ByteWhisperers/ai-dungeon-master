@@ -14,7 +14,160 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      characters: {
+        Row: {
+          charisma: number
+          class: string
+          constitution: number
+          created_at: string
+          dexterity: number
+          hp: number
+          id: string
+          intelligence: number
+          level: number
+          max_hp: number
+          name: string
+          strength: number
+          updated_at: string
+          user_id: string
+          wisdom: number
+          xp: number
+        }
+        Insert: {
+          charisma?: number
+          class: string
+          constitution?: number
+          created_at?: string
+          dexterity?: number
+          hp?: number
+          id?: string
+          intelligence?: number
+          level?: number
+          max_hp?: number
+          name: string
+          strength?: number
+          updated_at?: string
+          user_id: string
+          wisdom?: number
+          xp?: number
+        }
+        Update: {
+          charisma?: number
+          class?: string
+          constitution?: number
+          created_at?: string
+          dexterity?: number
+          hp?: number
+          id?: string
+          intelligence?: number
+          level?: number
+          max_hp?: number
+          name?: string
+          strength?: number
+          updated_at?: string
+          user_id?: string
+          wisdom?: number
+          xp?: number
+        }
+        Relationships: []
+      }
+      game_sessions: {
+        Row: {
+          character_id: string
+          created_at: string
+          id: string
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          character_id: string
+          created_at?: string
+          id?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          character_id?: string
+          created_at?: string
+          id?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_sessions_character_id_fkey"
+            columns: ["character_id"]
+            isOneToOne: false
+            referencedRelation: "characters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          message_type: string | null
+          role: string
+          session_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          message_type?: string | null
+          role: string
+          session_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          message_type?: string | null
+          role?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          id: string
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          id: string
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
